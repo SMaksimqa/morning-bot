@@ -1,0 +1,13 @@
+venv/
+.venv/
+__pycache__/
+*.pyc
+.git/
+.idea/
+.vscode/
+debug/
+dump_*.html
+*.log
+.env
+.env.example
+README.md
