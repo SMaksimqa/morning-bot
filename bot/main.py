@@ -11,6 +11,7 @@ from dotenv import load_dotenv
 env_path = Path(__file__).resolve().parent.parent / ".env"
 load_dotenv(env_path)
 
+from bot.services.weather import fetch_weather, describe_forecast  # noqa: E402
 from bot.services.weather import fetch_weather  # noqa: E402
 from bot.services.cbr import fetch_cbr_rates  # noqa: E402
 from bot.services.banks.kamkom import fetch_kamkom  # noqa: E402
@@ -81,7 +82,7 @@ async def cmd_now(message: Message) -> None:
     await message.answer("Собираю данные...")
 
     moscow, pattaya, cbr, kamkom = await asyncio.gather(
-        fetch_weather("moscow"),
+        fetch_weather("moscow", with_forecast=True),
         fetch_weather("pattaya"),
         fetch_cbr_rates(),
         fetch_kamkom(),
@@ -92,9 +93,12 @@ async def cmd_now(message: Message) -> None:
         lines.append(
             f"{moscow.icon} Москва: {moscow.temp:+.1f}°C, {moscow.description}"
         )
+        forecast_text = describe_forecast(moscow)
+        if forecast_text:
+            lines.append(forecast_text)
     else:
         lines.append("⚠️ Москва: ошибка получения погоды")
-
+    lines.append("")
     if pattaya:
         lines.append(
             f"{pattaya.icon} Паттайя: {pattaya.temp:+.1f}°C, {pattaya.description}"
