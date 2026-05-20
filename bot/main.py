@@ -12,7 +12,6 @@ env_path = Path(__file__).resolve().parent.parent / ".env"
 load_dotenv(env_path)
 
 from bot.services.weather import fetch_weather, describe_forecast  # noqa: E402
-from bot.services.weather import fetch_weather  # noqa: E402
 from bot.services.cbr import fetch_cbr_rates  # noqa: E402
 from bot.services.banks.kamkom import fetch_kamkom  # noqa: E402
 
@@ -42,10 +41,6 @@ def is_allowed(user_id: int) -> bool:
     return user_id in ALLOWED_USERS
 
 
-
-    )
-
-
 @dp.message(Command("start"))
 async def cmd_start(message: Message) -> None:
     logger.info("DEBUG /start: chat_id=%s, chat_type=%s, user_id=%s",
@@ -62,6 +57,7 @@ async def cmd_start(message: Message) -> None:
         "Команды:\n"
         "/now — погода и курсы валют\n"
         "/help — справка"
+    )
 
 
 @dp.message(Command("help"))
