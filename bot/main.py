@@ -42,8 +42,15 @@ def is_allowed(user_id: int) -> bool:
     return user_id in ALLOWED_USERS
 
 
+
+    )
+
+
 @dp.message(Command("start"))
 async def cmd_start(message: Message) -> None:
+    logger.info("DEBUG /start: chat_id=%s, chat_type=%s, user_id=%s",
+                message.chat.id, message.chat.type, message.from_user.id)
+
     user_id = message.from_user.id
     if not is_allowed(user_id):
         logger.warning("Отказ в доступе для user_id=%s", user_id)
@@ -55,7 +62,6 @@ async def cmd_start(message: Message) -> None:
         "Команды:\n"
         "/now — погода и курсы валют\n"
         "/help — справка"
-    )
 
 
 @dp.message(Command("help"))
