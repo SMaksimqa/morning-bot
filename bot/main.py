@@ -3,7 +3,7 @@ import logging
 import os
 from pathlib import Path
 
-from aiogram import Bot, Dispatcher
+from aiogram import Bot, Dispatcher, F
 from aiogram.filters import Command
 from aiogram.types import Message
 from dotenv import load_dotenv
@@ -21,11 +21,16 @@ ALLOWED_USERS = {
     for uid in os.getenv("ALLOWED_USERS", "").split(",")
     if uid.strip()
 }
+ALLOWED_CHATS = {
+    int(cid.strip())
+    for cid in os.getenv("ALLOWED_CHATS", "").split(",")
+    if cid.strip()
+}
 
 if not BOT_TOKEN:
     raise RuntimeError("BOT_TOKEN не задан в .env")
-if not ALLOWED_USERS:
-    raise RuntimeError("ALLOWED_USERS не задан в .env")
+if not ALLOWED_USERS and not ALLOWED_CHATS:
+    raise RuntimeError("Нужен ALLOWED_USERS или ALLOWED_CHATS в .env")
 
 logging.basicConfig(
     level=logging.INFO,
@@ -37,50 +42,15 @@ bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
 
-def is_allowed(user_id: int) -> bool:
-    return user_id in ALLOWED_USERS
+def is_access_granted(message: Message) -> bool:
+    if message.chat.id in ALLOWED_CHATS:
+        return True
+    if message.from_user and message.from_user.id in ALLOWED_USERS:
+        return True
+    return False
 
 
-@dp.message(Command("start"))
-async def cmd_start(message: Message) -> None:
-    logger.info("DEBUG /start: chat_id=%s, chat_type=%s, user_id=%s",
-                message.chat.id, message.chat.type, message.from_user.id)
-
-    user_id = message.from_user.id
-    if not is_allowed(user_id):
-        logger.warning("Отказ в доступе для user_id=%s", user_id)
-        await message.answer("Доступ запрещён.")
-        return
-
-    await message.answer(
-        "Привет! Я утренний бот.\n\n"
-        "Команды:\n"
-        "/now — погода и курсы валют\n"
-        "/help — справка"
-    )
-
-
-@dp.message(Command("help"))
-async def cmd_help(message: Message) -> None:
-    if not is_allowed(message.from_user.id):
-        return
-
-    await message.answer(
-        "Что я умею:\n"
-        "/now — показать погоду в Москве и Паттайе + курсы USD/RUB и THB/USD\n\n"
-        "Источники:\n"
-        "Погода — OpenWeatherMap\n"
-        "Курсы — ЦБ РФ, Камкомбанк, ББР, TT Exchange, Super Rich"
-    )
-
-
-@dp.message(Command("now"))
-async def cmd_now(message: Message) -> None:
-    if not is_allowed(message.from_user.id):
-        logger.warning("Отказ в /now для user_id=%s", message.from_user.id)
-        return
-
-    logger.info("Запрос /now от user_id=%s", message.from_user.id)
+async def send_morning_report(message: Message) -> None:
     await message.answer("Собираю данные...")
 
     moscow, pattaya, cbr, kamkom = await asyncio.gather(
@@ -100,7 +70,9 @@ async def cmd_now(message: Message) -> None:
             lines.append(forecast_text)
     else:
         lines.append("⚠️ Москва: ошибка получения погоды")
+
     lines.append("")
+
     if pattaya:
         lines.append(
             f"{pattaya.icon} Паттайя: {pattaya.temp:+.1f}°C, {pattaya.description}"
@@ -117,15 +89,63 @@ async def cmd_now(message: Message) -> None:
 
     if kamkom:
         lines.append(f"🏦 Камком ({kamkom.branch}): {kamkom.buy:.2f} / {kamkom.sell:.2f}")
-
     else:
         lines.append("⚠️ Камкомбанк: ошибка получения курса")
 
     await message.answer("\n".join(lines))
 
 
+@dp.message(Command("start"))
+async def cmd_start(message: Message) -> None:
+    if not is_access_granted(message):
+        logger.warning("Отказ /start: chat=%s user=%s", message.chat.id, message.from_user.id)
+        return
+
+    await message.answer(
+        "Привет! Я утренний бот.\n\n"
+        "Команды:\n"
+        "/now — погода и курсы валют\n"
+        "/help — справка\n\n"
+        "В группе можно написать «погода» или «курс» — отвечу тем же."
+    )
+
+
+@dp.message(Command("help"))
+async def cmd_help(message: Message) -> None:
+    if not is_access_granted(message):
+        return
+
+    await message.answer(
+        "Что я умею:\n"
+        "/now — показать погоду в Москве и Паттайе + курсы USD/RUB\n\n"
+        "Источники:\n"
+        "Погода — OpenWeatherMap\n"
+        "Курсы — ЦБ РФ, Камкомбанк"
+    )
+
+
+@dp.message(Command("now"))
+async def cmd_now(message: Message) -> None:
+    if not is_access_granted(message):
+        logger.warning("Отказ /now: chat=%s user=%s", message.chat.id, message.from_user.id)
+        return
+
+    logger.info("Запрос /now: chat=%s user=%s", message.chat.id, message.from_user.id)
+    await send_morning_report(message)
+
+
+@dp.message(F.text.lower().contains("погода") | F.text.lower().contains("курс"))
+async def on_keyword(message: Message) -> None:
+    if not is_access_granted(message):
+        return
+
+    logger.info("Триггер по слову: chat=%s user=%s text=%s",
+                message.chat.id, message.from_user.id, message.text)
+    await send_morning_report(message)
+
+
 async def main() -> None:
-    logger.info("Бот запускается. Разрешённые пользователи: %s", ALLOWED_USERS)
+    logger.info("Бот запускается. Юзеры: %s, чаты: %s", ALLOWED_USERS, ALLOWED_CHATS)
     await dp.start_polling(bot)
 
 
